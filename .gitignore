@@ -1,0 +1,11 @@
+# created by setup.ps1
+.venv/
+third_party/
+
+# per-machine state written by the studio
+studio/settings.json
+studio/build_info.txt
+studio/startup_error.log
+
+__pycache__/
+*.pyc
