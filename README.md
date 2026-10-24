@@ -35,6 +35,10 @@ upstream/     stg_427abfc.patch: every change made to the upstream trainer
 THIRD_PARTY_LICENSES/   licenses of the upstream projects
 ```
 
+[DATA_FORMAT.md](DATA_FORMAT.md) specifies the input folders and files
+(calibration set, recording, audio), for preparing data without
+stg-recorder.
+
 [REBUILD_FOR_AI.md](REBUILD_FOR_AI.md) describes the whole system in enough
 detail to rebuild or modify it without prior context.
 
