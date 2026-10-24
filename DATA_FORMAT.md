@@ -11,6 +11,10 @@ There are two kinds of input:
 | **Calibration set**: still images of a static scene, all cameras at once | Calibrate tab (`pipeline/calibrate.py`) | `rig/` |
 | **Recording**: synchronized video of all cameras, optional audio | Preprocess tab (`pipeline/prep_4d.py`) | dataset `stg<N>/` |
 
+If the intrinsics and extrinsics of the cameras are already known, the
+calibration set can be skipped: write the `rig/` folder directly (section 3)
+and go straight to preprocessing.
+
 ## 1. Rules that apply to both
 
 - **Camera names** are folder names such as `cam_A`, `cam_B`, ... Any names
@@ -97,14 +101,144 @@ Then measure the six distances between the lens centres (not the housings)
 with calipers; they give the metric scale. Run the Calibrate tab; the result
 must show PASSED.
 
-## 3. Recording
+## 3. Providing `rig/` directly (skipping the calibration set)
+
+If the intrinsics (focal length, principal point, distortion) and the
+extrinsics (each camera's pose on the rig) are already known, for example
+from another calibration tool, there is no need to shoot a calibration set.
+Write the `rig/` folder by hand, put it in the shooting root (section 4) and
+run the Preprocess tab.
+
+The values must describe **the recording's images**: the same rule as in
+section 2.1 applies (same source, same resolution, fixed focus and zoom, a
+rigid rig).
+
+```
+rig/
+    cameras.txt        intrinsics
+    prefixes.json      camera id -> camera name
+    rig_config.json    extrinsics
+    scale.json         metric scale and measured edge lengths
+```
+
+These four files are all preprocessing reads. The Calibrate tab also writes
+`calib_report.json`, `rigs.txt` and `summary.txt`; they are not needed.
+
+### 3.1 `cameras.txt`
+
+COLMAP text format, one line per camera; lines starting with `#` are ignored.
+
+```
+# CAMERA_ID MODEL WIDTH HEIGHT fx fy cx cy k1 k2 p1 p2
+1 OPENCV 1920 1080 973.30 966.79 932.12 539.56 0.11230 -0.08146 -0.00076 0.00351
+2 OPENCV 1920 1080 981.82 980.57 958.48 512.23 0.11395 -0.08316 0.00146 0.00140
+...
+```
+
+| Field | Meaning |
+|---|---|
+| `CAMERA_ID` | integer, the key used in `prefixes.json` |
+| `MODEL` | **must be `OPENCV`**: exactly eight parameters in the order shown. The name itself is not checked, so other models (with a different parameter count or order) are silently misread |
+| `WIDTH HEIGHT` | image size in pixels, **the same for all cameras and equal to the recording's resolution** |
+| `fx fy cx cy` | focal lengths and principal point **in pixels at that resolution**; the origin is the top-left corner of the image |
+| `k1 k2 p1 p2` | OpenCV distortion coefficients (radial k1, k2; tangential p1, p2). Use `0 0 0 0` for images that are already undistorted |
+
+### 3.2 `prefixes.json`
+
+Maps each `CAMERA_ID` to the camera's folder name in the recording:
+
+```json
+{"1": "cam_A/", "2": "cam_B/", "3": "cam_C/", "4": "cam_D/"}
+```
+
+A trailing `/` is optional. Every camera of the recording must appear here.
+
+### 3.3 `rig_config.json`
+
+The pose of every camera relative to the rig, in COLMAP's rig format: a list
+with one object.
+
+```json
+[
+  {
+    "cameras": [
+      {"image_prefix": "cam_A/", "ref_sensor": true},
+      {"image_prefix": "cam_D/",
+       "cam_from_rig_rotation": [0.999907, -0.002458, -0.002186, -0.013257],
+       "cam_from_rig_translation": [0.153362, -0.000109, 0.002234]},
+      ...
+    ]
+  }
+]
+```
+
+| Field | Meaning |
+|---|---|
+| `image_prefix` | camera name, as in `prefixes.json` |
+| `ref_sensor` | `true` for **exactly one** camera, the reference. The rig frame is that camera's frame, so it has no rotation or translation |
+| `cam_from_rig_rotation` | unit quaternion **`[w, x, y, z]`** (w first) |
+| `cam_from_rig_translation` | `[x, y, z]` **in metres** |
+
+The pose maps a point from the rig frame (= the reference camera's frame)
+into this camera's frame:
+
+    X_cam = R(q) * X_rig + t
+
+So `t` is **not** the camera's position; the position is `-R(q)^T * t`. Axes
+follow COLMAP / OpenCV: x right, y down, z forward (the viewing direction).
+In the example (values from a real calibration) cam_D sits 153 mm to the
+left of cam_A, seen from behind the rig, so its `t` has x = +0.153.
+
+Other fields that COLMAP writes here (`camera_model_name`, `camera_params`)
+are ignored; the intrinsics come from `cameras.txt` only.
+
+### 3.4 `scale.json`
+
+```json
+{
+  "metric": true,
+  "unit": "m",
+  "edges": [
+    {"pair": ["cam_A", "cam_B"], "measured_mm": 153.0},
+    {"pair": ["cam_A", "cam_C"], "measured_mm": 93.5}
+  ]
+}
+```
+
+| Field | Required | Meaning |
+|---|---|---|
+| `metric` | yes | `true`: the translations above are in metres |
+| `unit` | yes | must be `"m"` |
+| `edges` | **yes, at least one** | distances between lens centres, measured on the rig, in mm. Camera names in `pair` must match the recording. Preprocessing compares them with the distances computed from `rig_config.json` |
+
+Without `scale.json` preprocessing stops. **With an empty `edges` list, or
+with no edge whose two names match the recording, preprocessing crashes at
+the end of the geometry step** and leaves an incomplete dataset folder
+behind; do not train it. List all camera pairs if
+they were measured; one is the minimum.
+
+### 3.5 Checking a hand-written `rig/`
+
+Run preprocessing and read the beginning of its log:
+
+| Line | Must show |
+|---|---|
+| `OK poses from calibration (4/4 cameras)` | every camera was found in `rig_config.json` |
+| `triangulated ... points, reprojection ... px` | at most 2.5 px; a `FAIL` line here means the intrinsics or extrinsics do not fit the images (wrong resolution, wrong axis convention, `t` given as a position) |
+| `cam_A-cam_B: calibrated ... mm  measured ... mm  diff ...` | `OK` (within 2 mm) for every edge; `BAD` means the translations or their unit disagree with the rig |
+
+Then open the trained model and **inspect it by eye**: a wrong rig often
+still produces a dataset, only with doubled or smeared geometry.
+
+## 4. Recording
 
 **The rig must stay in a fixed position and must not move during the
 recording.**
 
 The Preprocess tab works on a **shooting root**: a folder that contains
 **exactly one** recording folder (the only subfolder with a `session.json`)
-and, next to it, the `rig/` folder from calibration.
+and, next to it, the `rig/` folder from calibration (or written by hand,
+section 3).
 
 ```
 <shooting root>/
@@ -118,7 +252,7 @@ and, next to it, the `rig/` folder from calibration.
         audio/index.json         optional
 ```
 
-### 3.1 `session.json` (minimal)
+### 4.1 `session.json` (minimal)
 
 ```json
 {
@@ -139,7 +273,7 @@ and, next to it, the `rig/` folder from calibration.
 | `capture.exposure_us`, `capture.gain`, `capture.fps`, `capture.resolution` | no | stored in the dataset for reference |
 | `warmup_s`, `session_id` | no | stored for reference |
 
-### 3.2 Video: `stream.mjpg` + `index.jsonl` per camera
+### 4.2 Video: `stream.mjpg` + `index.jsonl` per camera
 
 - `stream.mjpg` is the frames' encoded images **concatenated** byte by byte
   (each frame a complete JPEG). Nothing is decoded as a video; each frame is
@@ -165,7 +299,7 @@ parameters). Each group's time label is the midpoint of its timestamps. Frame
 rates may differ slightly between cameras; dropped frames are tolerated
 (their groups are discarded and reported in `phase_report.md`).
 
-### 3.3 Audio (optional)
+### 4.3 Audio (optional)
 
 Without `audio/audio.wav` the dataset simply has no sound.
 
@@ -199,7 +333,7 @@ Without `audio/audio.wav` the dataset simply has no sound.
 Loudness is measured during preprocessing (EBU R128) and a playback gain is
 stored in the dataset, so very quiet raw recordings are fine.
 
-## 4. Checking your own data
+## 5. Checking your own data
 
 1. Calibrate tab: choose the calibration set. The pre-check lists the cameras,
    the number of sets and any camera with missing images. The result must
@@ -213,7 +347,7 @@ stored in the dataset, so very quiet raw recordings are fine.
 3. Run preprocessing. Errors such as "these cameras are not in the
    calibration" mean the camera names differ between the two inputs.
 
-## 5. Converting footage from other cameras
+## 6. Converting footage from other cameras
 
 Separate cameras (action cameras, phones) work if:
 
