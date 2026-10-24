@@ -74,7 +74,7 @@ recording.**
 | **No processing that changes from frame to frame**: electronic stabilization, automatic cropping or zoom | Each frame then has a different geometry, which one set of calibration values cannot describe |
 | **Fixed focus and fixed zoom**, the same as for the recording | Focus and zoom change the intrinsics |
 | **Set the horizontal field of view** (Calibrate tab, advanced parameters, "Horizontal FOV"; `--hfov`) | It gives the initial focal length. The default 86 deg fits the cameras used with stg-recorder; an initial value off by about 2x makes calibration fail |
-| **Within one set, the rig must not move** | All cameras of a set must see the scene from one rig pose. The scene is static, so the cameras do not have to fire at the same instant, as long as the rig stays still until the whole set is taken |
+| **A rigid rig: the cameras must not move relative to each other**, from calibration through the recording | The calibration describes where the cameras are relative to each other; if any camera shifts or turns on the rig, it no longer fits |
 | Ordinary lenses up to wide angle | The OPENCV model covers normal and wide-angle lenses; strong fisheye lenses are not modelled well |
 | Sharp images | Blurred sets are detected and dropped automatically, which leaves fewer sets |
 
@@ -91,12 +91,16 @@ This procedure worked for the rig used with stg-recorder (four cameras on a
 | Scene about 2.5 m from the rig, ideally indoors, nothing at infinity (sky, distant street through a window) | Points at a known, moderate distance constrain the geometry; points at infinity carry no depth |
 | Texture everywhere, including the image corners; avoid a single flat wall and repetitive patterns such as tiles | Distortion is largest in the corners; a flat wall cannot separate focal length from distance; repeated patterns cause false matches |
 | At least 3 rig positions; at each position a 3 x 3 grid of orientations (left / centre / right x up / centre / down), neighbouring orientations overlapping by roughly a third of the frame | Varied positions and rotations constrain focal length and distortion; overlap lets the images be matched. This gives 27 sets or more (15 is the minimum the pre-check accepts without a warning) |
+| Keep the rig still while one set is taken (or trigger all cameras at the same instant), and move it between sets | The rig geometry is derived from each set, so a set whose images were taken at different rig poses adds error. With a static scene the cameras need not fire at once, as long as the rig stays still until the set is complete |
 
 Then measure the six distances between the lens centres (not the housings)
 with calipers; they give the metric scale. Run the Calibrate tab; the result
 must show PASSED.
 
 ## 3. Recording
+
+**The rig must stay in a fixed position and must not move during the
+recording.**
 
 The Preprocess tab works on a **shooting root**: a folder that contains
 **exactly one** recording folder (the only subfolder with a `session.json`)
