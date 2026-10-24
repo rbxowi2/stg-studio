@@ -81,8 +81,8 @@ The only proof that the whole chain works is a real run:
 
 1. **Calibrate**: choose a calibration set from the recorder, enter the six
    measured camera distances, run. The result table must show PASSED.
-   How to shoot the calibration set (static scene, no board) is described in
-   the stg-recorder README, section "Shooting a calibration set".
+   What the calibration images must be and how to shoot them is described in
+   [DATA_FORMAT.md](DATA_FORMAT.md), section 2.
 2. Copy the resulting `rig\` folder into a shooting root next to its recording.
 3. **Preprocess**: choose the shooting root, run. A dataset `stg<N>\` appears.
 4. **Train**: tier `fast`, start. The loss curve and the preview update.

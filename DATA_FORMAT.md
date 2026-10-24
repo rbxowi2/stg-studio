@@ -39,9 +39,7 @@ calib_<anything>/
 - One folder per camera, named as in `streams`.
 - Image files are named `shot_*` (any image extension COLMAP reads; JPEG is
   used). **The same file name must exist in every camera folder**: `shot_0007`
-  in all cameras is one set, taken at the same moment from the same rig pose.
-- 15 sets or more; how to shoot them is described in the stg-recorder README,
-  section "Shooting a calibration set".
+  in all cameras is one set, taken from one rig pose.
 
 `session.json` (minimal):
 
@@ -60,6 +58,42 @@ calib_<anything>/
 | `streams[].name` | yes | camera folder names |
 | `capture.resolution` | yes | `[width, height]` of the images; used for the initial focal length |
 | `mode` | no | `"calib"`; anything else only prints a warning |
+
+### 2.1 What the images must be (required)
+
+Calibration estimates each camera's focal length, principal point and lens
+distortion (OPENCV model: k1, k2, p1, p2) plus the rig geometry.
+Preprocessing later uses exactly these values to undistort the recording, so
+the images must show the lens as it really is.
+
+| Requirement | Why |
+|---|---|
+| **Original, uncorrected images. Do not undistort them first** | Calibration measures the distortion itself; pre-corrected images give a wrong lens model |
+| **Turn off in-camera lens correction, stabilization and digital zoom** (for example "linear" modes of action cameras, phone distortion correction) | They resample or crop the image per shot and change its geometry. If a correction cannot be turned off, the calibration set and the recording must use exactly the same setting |
+| **No cropping, resizing or rotating** | The principal point and the resolution must stay as recorded. The resolution must equal the recording's |
+| **Fixed focus and fixed zoom**, the same as for the recording | Focus and zoom change the intrinsics |
+| **Set the horizontal field of view** (Calibrate tab, advanced parameters, "Horizontal FOV"; `--hfov`) | It gives the initial focal length. The default 86 deg fits the cameras used with stg-recorder; an initial value off by about 2x makes calibration fail |
+| **Within one set, the rig must not move** | All cameras of a set must see the scene from one rig pose. The scene is static, so the cameras do not have to fire at the same instant, as long as the rig stays still until the whole set is taken |
+| Ordinary lenses up to wide angle | The OPENCV model covers normal and wide-angle lenses; strong fisheye lenses are not modelled well |
+| Sharp images | Blurred sets are detected and dropped automatically, which leaves fewer sets |
+
+### 2.2 How to shoot (recommended, not required)
+
+This procedure worked for the rig used with stg-recorder (four cameras on a
+153 x 93 mm frame). Other procedures can work; each point says what it is for.
+
+| Recommendation | Purpose |
+|---|---|
+| Calibrate on the day of shooting, and again after anything on the rig changed (camera moved, ports swapped, focus touched) | Accuracy was observed to degrade over time even with the rig untouched |
+| No calibration board: photograph a static scene | A board is expensive and bulky; a textured static scene works as well |
+| Nothing in the scene moves (people, pets, screens, leaves, shadows) | Moving content cannot be matched between images and pulls the solution |
+| Scene about 2.5 m from the rig, ideally indoors, nothing at infinity (sky, distant street through a window) | Points at a known, moderate distance constrain the geometry; points at infinity carry no depth |
+| Texture everywhere, including the image corners; avoid a single flat wall and repetitive patterns such as tiles | Distortion is largest in the corners; a flat wall cannot separate focal length from distance; repeated patterns cause false matches |
+| At least 3 rig positions; at each position a 3 x 3 grid of orientations (left / centre / right x up / centre / down), neighbouring orientations overlapping by roughly a third of the frame | Varied positions and rotations constrain focal length and distortion; overlap lets the images be matched. This gives 27 sets or more (15 is the minimum the pre-check accepts without a warning) |
+
+Then measure the six distances between the lens centres (not the housings)
+with calipers; they give the metric scale. Run the Calibrate tab; the result
+must show PASSED.
 
 ## 3. Recording
 
