@@ -62,15 +62,16 @@ calib_<anything>/
 ### 2.1 What the images must be (required)
 
 Calibration estimates each camera's focal length, principal point and lens
-distortion (OPENCV model: k1, k2, p1, p2) plus the rig geometry.
-Preprocessing later uses exactly these values to undistort the recording, so
-the images must show the lens as it really is.
+distortion (OPENCV model: k1, k2, p1, p2) plus the rig geometry, **as they
+appear in the images it is given**. Preprocessing applies exactly these
+values to the recorded frames. So the one rule behind most of the list below
+is: **the calibration images must come from the same source as the
+recording.**
 
 | Requirement | Why |
 |---|---|
-| **Original, uncorrected images. Do not undistort them first** | Calibration measures the distortion itself; pre-corrected images give a wrong lens model |
-| **Turn off in-camera lens correction, stabilization and digital zoom** (for example "linear" modes of action cameras, phone distortion correction) | They resample or crop the image per shot and change its geometry. If a correction cannot be turned off, the calibration set and the recording must use exactly the same setting |
-| **No cropping, resizing or rotating** | The principal point and the resolution must stay as recorded. The resolution must equal the recording's |
+| **Same source as the recording**: the same cameras, the same camera mode and resolution, and the same processing (in-camera lens correction on or off, any software step applied afterwards) | What is measured is the geometry of the images, not of the bare lens. If both inputs went through the same fixed correction, the calibration simply measures what remains, which is still correct; if they differ, the values do not fit the recording |
+| **No processing that changes from frame to frame**: electronic stabilization, automatic cropping or zoom | Each frame then has a different geometry, which one set of calibration values cannot describe |
 | **Fixed focus and fixed zoom**, the same as for the recording | Focus and zoom change the intrinsics |
 | **Set the horizontal field of view** (Calibrate tab, advanced parameters, "Horizontal FOV"; `--hfov`) | It gives the initial focal length. The default 86 deg fits the cameras used with stg-recorder; an initial value off by about 2x makes calibration fail |
 | **Within one set, the rig must not move** | All cameras of a set must see the scene from one rig pose. The scene is static, so the cameras do not have to fire at the same instant, as long as the rig stays still until the whole set is taken |
