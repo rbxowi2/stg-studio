@@ -230,6 +230,97 @@ Run preprocessing and read the beginning of its log:
 Then open the trained model and **inspect it by eye**: a wrong rig often
 still produces a dataset, only with doubled or smeared geometry.
 
+### 3.6 Example: converting a public dataset (Neural 3D Video)
+
+This walk-through has been run end to end (preprocessing, training, viewing)
+and shows what converting someone else's data involves.
+[Neural 3D Video](https://github.com/facebookresearch/Neural_3D_Video)
+(N3DV, Meta) offers synchronized multi-camera recordings with camera poses,
+licensed CC BY-NC 4.0. One scene (for example `cook_spinach.zip`) contains:
+
+```
+cam00.mp4 ... cam20.mp4    one video per camera, 2704 x 2028, 30 fps, 300 frames
+poses_bounds.npy           camera poses in the LLFF format
+```
+
+**Camera poses.** `poses_bounds.npy` is an array with one row of 17 numbers
+per video, the rows in the sorted order of the video file names. The first
+15 numbers form a 3 x 5 matrix:
+
+```
+[ R (3 x 3) | C (3) | (h, w, f) ]
+```
+
+- `R` rotates camera to world; its three columns are the camera's **down,
+  right and backward** directions (the LLFF convention). The camera's
+  right / down / forward axes in COLMAP terms are therefore
+  `R_cv = [R[:,1], R[:,0], -R[:,2]]`.
+- `C` is the camera **position** in the world, in arbitrary units.
+- `h, w` are the image size, `f` the focal length in pixels. There is no
+  principal point and no distortion.
+- The last two numbers of the row (near / far depth) are not needed.
+
+**Choosing cameras.** The 21 cameras form two rows. Choose four that span a
+rectangle **wider than it is tall**: preprocessing takes the longer side of
+the camera layout as the horizontal direction, so a layout taller than wide
+ends up rotated by 90 degrees. For example `cam04` and `cam07` in the upper
+row with `cam14` and `cam17` below them (about 0.8 x 0.5 m with the scale
+assumed below) work.
+
+**`rig/`.** Pick one camera as the reference (`ref`). For every other camera
+`i`, with `R_i` and `C_i` from above (already in COLMAP axes):
+
+```
+cam_from_rig_rotation    = quaternion [w, x, y, z] of  R_i^T * R_ref
+cam_from_rig_translation = R_i^T * (C_ref - C_i) * s
+```
+
+`s` converts the dataset's units to metres. N3DV publishes no camera
+spacing, so `s` can only be assumed (for example from the expected distance
+to the nearest object compared with the near depth in `poses_bounds.npy`).
+With an assumed `s`, write `scale.json` with `"metric": true` and edges
+computed from the camera positions times `s`; then the edge check of
+section 3.5 only shows that the files agree with each other, and metric
+readings (audio direction, sizes) are only as good as the assumption.
+
+`cameras.txt`: if the videos are scaled down by a factor `k` (half size is a
+practical choice for 12 GB of GPU memory), every camera gets
+
+```
+<id> OPENCV <w/k> <h/k> <f/k> <f/k> <w/k/2> <h/k/2> 0 0 0 0
+```
+
+and `prefixes.json` maps each `id` to its camera name (`"1": "cam04/"`, ...).
+
+**Recording.** For each chosen camera:
+
+1. Decode the video frame by frame, scale each frame by `1/k` and encode it
+   as JPEG.
+2. Append the JPEG bytes to `cam04/stream.mjpg` and write one line per frame
+   to `cam04/index.jsonl`: `i` = frame number, `ts_ns = round(i * 1e9 / fps)`,
+   `off` / `len` = where the JPEG starts in `stream.mjpg` and its length.
+   The videos are already synchronized, so frame `i` of every camera gets the
+   same timestamp.
+3. Write `session.json` listing the four cameras (section 4.1).
+
+```
+<shooting root>/
+    rig/                  cameras.txt, prefixes.json, rig_config.json, scale.json
+    rec_cook_spinach/
+        session.json
+        cam04/stream.mjpg
+        cam04/index.jsonl
+        ...
+```
+
+A camera that is not used for training (in N3DV `cam00` sits between
+`cam04` and `cam07`) can be converted to plain JPEG frames **outside the
+shooting root** and used to compare against the model by eye.
+
+**Result** with the cameras above, half size and an assumed 0.18 m per unit:
+all 300 time steps valid, `OK poses from calibration (4/4 cameras)`,
+reprojection 0.67 px, every edge within 0.03 mm.
+
 ## 4. Recording
 
 **The rig must stay in a fixed position and must not move during the
